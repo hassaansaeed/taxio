@@ -6,18 +6,25 @@ use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\EmailVerificationController;
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/auth/google', [AuthController::class, 'googleLogin']);
 
+Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+    ->middleware(['signed'])
+    ->name('verification.verify');
 
-// Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', fn(Request $request) => $request->user());
+
+    // Email verification routes
+    Route::get('/email/verification-status', [EmailVerificationController::class, 'status']);
+    Route::post('/email/verification-notification', [EmailVerificationController::class, 'resend']);
 
     // Profile routes
     Route::prefix('profile')->group(function () {
@@ -26,5 +33,4 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/password', [ProfileController::class, 'updatePassword']);
         Route::delete('/photo', [ProfileController::class, 'deleteProfilePhoto']);
     });
-
 });

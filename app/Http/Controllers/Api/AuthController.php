@@ -9,76 +9,78 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Socialite\Facades\Socialite;
-
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Support\Facades\Mail;
+use App\Notifications\VerifyEmail;
 
 class AuthController extends Controller
 {
-
     public function register(Request $request){
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ]);
 
-        try {
-            $data = $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|unique:users',
-                'password' => 'required|string|min:6|confirmed',
-            ]);
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+        ]);
 
-            $user = User::create([
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'password' => bcrypt($data['password']),
-            ]);
+        // Trigger the Registered event
+        event(new Registered($user));
 
-            $token = $user->createToken('auth_token')->plainTextToken;
+        // Manually send verification email
+        $user->sendEmailVerificationNotification();
 
-            return response()->json([
-                'user' => $user,
-                'token' => $token,
-            ]);
+        $token = $user->createToken('auth_token')->plainTextToken;
 
-        } catch (ValidationException $e) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
-        }
+        return response()->json([
+            'message' => 'Registration successful. Please check your email for verification.',
+            'user' => $user,
+            'token' => $token,
+            'email_verified' => false
+        ], 201);
     }
 
     public function login(Request $request)
     {
-        try {
-            $request->validate([
-                'email' => 'required|string|email',
-                'password' => 'required|string',
-            ]);
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email'],
+            'password' => ['required', 'string'],
+        ]);
 
-            $user = User::where('email', $request->email)->first();
-
-            if (!$user || !Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    'message' => 'Invalid credentials',
-                    'errors' => [
-                        'email' => ['The provided credentials are incorrect.']
-                    ]
-                ], 401);
-            }
-
-            $token = $user->createToken('auth_token')->plainTextToken;
-
+        if (!Auth::attempt($validated)) {
             return response()->json([
-                'user' => $user,
-                'token' => $token,
-            ]);
-
-        } catch (ValidationException $e) {
-            return response()->json([
-                'message' => 'Validation error',
-                'errors' => $e->errors()
-            ], 422);
+                'message' => 'Invalid login credentials'
+            ], 401);
         }
+
+        $user = User::where('email', $validated['email'])->firstOrFail();
+        
+        if (!$user->hasVerifiedEmail()) {
+            // Resend verification email if not verified
+            $user->sendEmailVerificationNotification();
+            
+            return response()->json([
+                'message' => 'Please verify your email address. A new verification link has been sent.',
+                'user' => $user,
+                'token' => $user->createToken('auth_token')->plainTextToken,
+                'email_verified' => false
+            ], 403);
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Login successful',
+            'user' => $user,
+            'token' => $token,
+            'email_verified' => true
+        ]);
     }
-
-
 
     public function googleLogin(){
         try {
@@ -88,10 +90,16 @@ class AuthController extends Controller
                 ['email' => $googleUser->email],
                 [
                     'name' => $googleUser->name,
-                    'password' => bcrypt(Str::random(16)), // Random password
+                    'password' => bcrypt(Str::random(16)),
                     'google_id' => $googleUser->id,
                 ]
             );
+
+            // Auto-verify email for Google users
+            if (!$user->hasVerifiedEmail()) {
+                $user->markEmailAsVerified();
+            }
+
             Auth::login($user);
             return redirect()->intended('/dashboard');
 
@@ -126,8 +134,10 @@ class AuthController extends Controller
 //    }
 
     public function logout(Request $request){
+        $request->user()->currentAccessToken()->delete();
 
-        $request->user()->tokens()->delete(); // Delete all tokens
-        return response()->json(['message' => 'Logged out']);
+        return response()->json([
+            'message' => 'Successfully logged out'
+        ]);
     }
 }

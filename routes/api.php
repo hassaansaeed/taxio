@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\Api\PhoneVerificationController;
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
@@ -25,6 +26,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Email verification routes
     Route::get('/email/verification-status', [EmailVerificationController::class, 'status']);
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'resend']);
+
+    // Phone verification routes
+    Route::prefix('phone')->group(function () {
+        Route::post('/send-verification', [PhoneVerificationController::class, 'send']);
+        Route::post('/verify', [PhoneVerificationController::class, 'verify']);
+        Route::get('/status', [PhoneVerificationController::class, 'status']);
+    });
 
     // Profile routes
     Route::prefix('profile')->group(function () {

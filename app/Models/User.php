@@ -31,6 +31,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'phone',
+        'phone_verified_at',
         'address',
         'profile_photo_path',
     ];
@@ -61,11 +62,17 @@ class User extends Authenticatable implements MustVerifyEmail
      *
      * @return array<string, string>
      */
-    protected function casts(): array
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'phone_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+
+    /**
+     * Check if the user's phone number is verified.
+     */
+    public function hasVerifiedPhone(): bool
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return !is_null($this->phone_verified_at);
     }
 }
